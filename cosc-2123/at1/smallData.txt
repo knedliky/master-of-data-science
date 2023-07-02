@@ -1,0 +1,3 @@
+cute 10
+cup 5
+curse 15

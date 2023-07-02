@@ -1,0 +1,193 @@
+---
+title: "MATH2349 Semester 1, 2020"
+author: "Simon Karumbi s3455453"
+subtitle: Assignment 2
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+## Required packages 
+
+```{r}
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+## Executive Summary 
+
+Four datasets contributed to this preprocessing exercise, with the aim of looking at the relation of daily traffic accidents and taxi usage in different weather conditions in New York, between January 01 2015 and June 30 2015. We started with the Taxi data, as this was the most difficult to get reliable data for, and sequentially joined the other datasets onto this dataframe, using the pickup_date field. It proved to be much easier to clean the data along the way, rather than joining all the dataframes at one, as this process would've involved a very large dataframe that would've taken a lot longer to compute due to the timestamped observations taken in both the taxi dataset and weather datasets. This data was instead grouped and summarized by day before joining onto the main data frame. 
+
+N/A values and outliers were dealt with during the data cleaning process, through left joining to the existing data in the taxi data set. Some data was definitely lost along the way due to not every single day between January and June being recorded in the taxi dataset. This was ok in relation to this study, as we were mainly interested in the taxi data that we did have, the temperature and accident rate wasn't the main part of the story. It would be interesting to look at the data from a different perspective anduse the accident data and the weather data as the main story, with the taxi data playing a supporting role. 
+
+Some alterations to the data needed to be done, with the temperature stored in Kelvin that needed to be converted to celsius, and no pre-existing function to measure the mode of a descriptive variable in R. This was needed when the temperature values were taken throughout the day, and an average temperature value needed to be calculated, as well as a mode. It might have been better to use max temperature here, as is the standard for weather reporting and forecasting, however, I see both as valid measurements. We also derived the season from the Date value in order to get a better understanding of the temperature values during a particular time period. 
+
+## Data 
+
+Three datasets are used to generate this preprocessing report. A New York Taxi Fare predicition dataset from [Kaggle](https://www.kaggle.com/c/nyc-taxi-trip-duration/data), the Weather Obesrvations for New York from [Kaggle](https://www.kaggle.com/selfishgene/historical-hourly-weather-data), and collision information for traffic accidents in New York, also sourced from [Kaggle](https://www.kaggle.com/nypd/vehicle-collisions). The weather dataset contained two tables of interest, the temperature table which measured the hourly obesrvations in degrees Kelvin, and the description table which described the hourly conditions.
+
+Some preprocessing was done to the tables before they were merged to avoid longer than necessary processing times. The smallest date range where I had all of the data was from the New York Taxi datasets, which ranged from 2015-01-01 to 2015-06-30, therefore, I would be doing left joins with the rest of the datasets. Some of the data was stored in string format, and datetime format, where the granularity I was aiming for was daily. 
+
+```{r}
+# Reading in the data sets as CSV's after downloading
+taxi <- read_csv('taxi.csv')
+temperature <- read_csv('temperature.csv')
+weather <- read_csv('weather_description.csv')
+accidents <- read_csv('accidents.csv')
+
+# Filtering and joining the tables from the weather obesrvations 
+ny_weather <- left_join(select(temperature, datetime, `New York`), select(weather, datetime, `New York`), by = "datetime")
+ny_weather <- rename(ny_weather, temperature = `New York.x`, description = `New York.y`)
+
+# Coercing strings to dates and selecting the appropriate columns for the Taxi and NY Weather datasets in order to join them
+taxi$pickup_date <- as_date(taxi$pickup_datetime)
+taxi <- group_by(taxi, pickup_date) %>% summarize(trips = n(), passengers = sum(passenger_count))
+ny_weather$date <- as_date(ny_weather$datetime)
+
+# Joining the NY Weather and Taxi datasets by date
+ny_weather_taxi <- left_join(taxi, ny_weather, by = c('pickup_date' = 'date'))
+
+# Joining the Collision dataset with the rest of the dataset by coercing the Date field
+accidents_filtered <- select(accidents, one_of(c('UNIQUE KEY', 'DATE', 'PERSONS KILLED')))
+accidents_filtered$DATE <- mdy(accidents_filtered$DATE)
+accidents_filtered <- accidents_filtered %>% group_by(date = DATE) %>% summarize(accidents = n(), persons_deceased = sum(`PERSONS KILLED`))
+ny_weather_taxi_accidents <- left_join(ny_weather_taxi, accidents_filtered, by = c("pickup_date" = "date"))
+
+# Finally filtering out all of the data for Preprocessing
+df <- select(ny_weather_taxi_accidents, one_of('pickup_date', 'trips', 'passengers', 'temperature', 'description', 'accidents', 'persons_deceased'))
+
+# Rename factors for easy identification
+# df <- rename(df, accident_id = 'UNIQUE KEY', persons_deceased = 'PERSONS KILLED')
+
+# Function for converting Kelvin to Celsius
+kelvin_to_celsius <- function(kelvin) {
+  return(kelvin - 273.15)
+}
+
+# Only 1 decimal point is necessary for temperature
+df$temperature <- round(kelvin_to_celsius(df$temperature), digits = 1)
+
+# Converting temperature description to factor
+df$description <- df$description %>% as.factor()
+
+# Converting passengers and persons_deceased to integer
+df$passengers <- df$passengers %>% as.integer()
+df$persons_deceased <- df$persons_deceased %>% as.integer()
+
+```
+
+## Understand 
+
+Summarise the types of variables and data structures, check the attributes in the data and apply proper data type conversions. In addition to the R codes and outputs, explain briefly the steps that you have taken. In this section, show that you have fulfilled minimum requirements 2-4.
+
+```{r}
+
+# Summary details of the new data frame 
+summary(df)
+
+```
+
+## Understand contd. 
+
+We can see that there are several temperature measurements per day. We can make this better by taking the average/ mean temperature, and taking the mode of the weather description.
+
+```{r}
+
+# A function for calculating the mode of descriptive varibles
+mode <- function(x) {
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Grouping the data and then summarising the temperature by mean, and mode 
+df <- df %>% group_by(pickup_date, trips, passengers, accidents, persons_deceased) %>% summarize(temperature = round(mean(temperature), digits = 1), description = mode(description))
+
+```
+
+```{r}
+# Creating a function to create an ordered Seasons factor variable from the Date data
+getNorthernSeason <- function(input.date) {
+  # create a numeric in the format off MMDD
+  numeric.date <- 100 * month(input.date) + day(input.date)
+  # Separate the data into the start and endof the year, and season starts and ends
+  seasons <- cut(numeric.date, breaks = c(0,319,0620,0921,1220,1231))
+  # Assign seasons
+  levels(seasons) <- ordered(c('Winter', 'Spring', 'Summer', 'Autumn', 'Winter'))
+  return(seasons)
+}
+
+# Creating a season variable
+df$season <- getNorthernSeason(df$pickup_date)
+
+```
+
+##	Tidy & Manipulate Data I & II
+
+The data is now currently in a Tidy format, thanks to the steps performed earlier. The data was not tidy in earlier iterations due to the fact the there were many datetime observations, when we were aiming to observe daily features. By grouping and summarizing the datasets, we were able to tidy the data as we went along. 
+
+Each variable is defined in a column, each row is a daily measurement, and only one piece of information is stored in each of the cells. We can further Tidy this (although it is unnecessary), by splitting the pickup_date column into day, month and year which may give us interesting insight into the seasonality of the time series when doing further investigation. We won't actually do this, as the data is more valuable to us in Date format.
+
+```{r}
+head(df)
+
+# An example of separating the data into y, m, and d
+head(separate(df, pickup_date, c('y', 'm', 'd')))
+
+```
+
+##	Scan I & Scan II
+
+After filtering the data so that it aligns with what we know our taxi data to be, we find that there are no NA values remaining after the aforementioned data preparation.
+
+```{r}
+# Filtering for Jan 01 2015 to the end of the dataset
+df <- filter(df, pickup_date >= as_date('2015-01-01')) 
+tail(df)
+
+# Checking for NA values, we have now cleared all NAs
+sum(is.na(df))
+
+```
+
+After looking at the charts for accidents and passengers, we notice that there are some interesting things in the data. There seems to be a high spike in traffic incidents in early January, which makes sense considering that people would most likely be returning to work after the Christmas and New Year period. The range does not indicate that there are any strange figures. Furthermore, the passenger numbers are relatively consistent across the 6 month period, where they trend upward toward the end, again making sense as more people start travelling and socialising at the beginning of Summer. Then moving to the temperature data, the box plots relating to each season make sense, with no outliers for any of the figures. As the data begins in January and ends in June, we only have a short period of time for Winter and Summer, where we would expect there to be a higher variance. However, the trend is overall upward which also makes sense logically.
+
+```{r}
+# Checking the weather descriptions to make sure they are logical
+levels(df$description)
+
+# Visualising the accident data to see any spikes or significantly strange values
+ggplot(df, aes(x = pickup_date, y = accidents)) +
+  geom_line(stat = "identity") + 
+  labs(x = 'Date', y = 'Number of Accidents', title = 'New York Traffic Accidents')
+
+# Visualising the passengers data to see any spikes or significantly strange values
+ggplot(df, aes(x = pickup_date, y = passengers)) +
+  geom_line(stat = "identity") + 
+  labs(x = 'Date', y = 'Number of Passengers', title = 'Taxi Passengers by Date')
+
+# Plotting temperature by season to see if there are any outliers or strange values
+gg <- ggplot(df, aes(x = season, y = temperature, color = season))
+gg + geom_boxplot() + labs(x = '', y = 'Temperature', title = 'New York Temperature by Season', color = 'Season')
+
+```
+
+##	Transform 
+
+We have applied transformations earlier in the data cleaning process, by moving the New York temperature data from Kelvins to a more meaningful scale, Celsius, where 0 signifies the freezing point of water and is a much more recognised standard of temperature mesaurement. 
+
+```{r}
+# Density plot for New York temperature from the original data set
+ggplot(temperature, aes(x = `New York`)) +
+  geom_histogram(bins = 25) +
+  labs(title = 'New York Temperature', x = 'Degrees Kelvin', y = 'Density')
+
+# Density plot for the 
+ggplot(df, aes(x = temperature)) +
+  geom_histogram(bins = 15) +
+  labs(title = 'New York Temperature', x = 'Degrees Celsius', y = 'Density')
+```
+<br>
+<br>

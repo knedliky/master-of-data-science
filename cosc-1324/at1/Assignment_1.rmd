@@ -1,0 +1,98 @@
+---
+title: "MATH1324 Assignment 1"
+subtitle: Modeling Body Measurements
+output:
+html_notebook: default
+---
+
+## Student Details
+
+Simon Karumbi (s3455453)
+
+## Problem Statement
+
+The goal of this investigation is to determine whether one of the body measurements from the sampled data of physically active males and females, fits a normal distribution. This will help determine the best strategy to purchase a sizes for an activewear brand also using a normal distribution to determine which waist sizes should be bought into.
+
+As we wish to test a model for clothing, waist girth was selected as a variable where a normal distribution would likely fit for both men and women, while also being an easy to implement purchasing strategy for sizing of bottom wear.
+
+## Load Packages
+
+```{r}
+library(forcats)
+library(dplyr)
+library(ggplot2)
+library(readr)
+```
+
+## Data
+
+Import the body measurements data and prepare it for analysis. Show your code.
+
+
+```{r}
+# Reading in flat file
+bdims <- read_csv("bdims.csv")
+
+```
+
+
+## Summary Statistics
+
+Calculate descriptive statistics (i.e., mean, median, standard deviation, first and third quartile, interquartile range, minimum and maximum values) of the selected measurement grouped by sex.
+
+```{r}
+# Factoring and labelling 'Sex' variable to better understand the information
+bdims$sex <- bdims$sex %>% as.factor() %>% fct_recode("Female"="0", "Male"="1")
+
+# Creating a manageable dataframe for the chosen variable (Waist girth measured at the narrowest part of torso below the rib cage as average of contracted and relaxed position)
+df <- data.frame(Age = bdims$age, Sex = bdims$sex, Height = bdims$hgt, Weight = bdims$wgt, Waist = bdims$wai.gi)
+
+# Summarising the mean, median, min, max, standard deviation, first and third quartile, count and missing count of the waistngirth data for males and females
+df %>% group_by(Sex) %>% summarise(
+Min = min(Waist,na.rm = TRUE),
+Max = max(Waist,na.rm = TRUE),
+Median = median(Waist, na.rm = TRUE),
+Mean = mean(Waist, na.rm = TRUE),
+SD = sd(Waist, na.rm = TRUE), 
+Q1 = quantile(Waist,probs = .25,na.rm = TRUE),
+Q3 = quantile(Waist,probs = .75,na.rm = TRUE),
+Count = n(), 
+Missing = sum(is.na(Waist)))
+
+```
+
+
+## Distribution Fitting
+
+Compare the empirical distribution of selected body measurement to a normal distribution separately in men and in women. You need to do this visually by plotting the histogram with normal distribution overlay. Show your code.
+
+```{r}
+# Data frames to group Male and Female data for easier manipulation and visualisation
+df_male <- df %>% filter(Sex == "Male")
+df_female <- df %>% filter(Sex == "Female")
+
+# Assigning variables for Men's and Women's mean and sd for calculating the normal distribution
+male_mean <- mean(df_male$Waist)
+male_sd <- sd(df_male$Waist)
+female_mean <- mean(df_female$Waist)
+female_sd <- sd(df_female$Waist)
+
+# Histogram of Men's waist girth in centimeters with a normal distribution overlay
+hist(df_male$Waist, probability = TRUE, xlab = "Waist girth (cm)", main = "Waist measurement in Males", col = "lightblue", xlim = c(65,115), breaks = 20)
+x <- c(65:115)
+y <- dnorm(x = x, mean = male_mean, sd = male_sd)
+lines(x = x, y = y, col = "maroon", lwd=2)
+
+# Histogram of Women's waist girth in centimeters with a normal distribution overlay
+hist(df_female$Waist, probability = TRUE, xlab = "Waist girth (cm)", main = "Waist measurement in Females", col = "pink", xlim = c(55,105), breaks = 20)
+x <- c(55:105)
+y <- dnorm(x = x, mean = female_mean, sd = female_sd)
+lines(x = x, y = y, col = "maroon", lwd =2)
+```
+
+## Interpretation
+
+Male waist measurement fits a normal distribution well with a slight positive skew. Female waist measurement also moderately fits a normal distribution with a more positive skew. It can be said that both male and female waist girth measurements approximately fit a normal distribution. 
+
+The fact that both male and female waist girths approximately fit a normal distribution makes understanding size requirements for an activewear brand fairly easy to predict using a normal distribution model. Bottom wear size runs purchased using a normal distribution will most likely benefit the brand financially through increased sales through increased availability.
+

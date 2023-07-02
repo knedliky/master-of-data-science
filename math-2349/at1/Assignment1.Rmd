@@ -1,0 +1,45 @@
+---
+title: "Data Wrangling Assignment 1"
+author: "Simon Karumbi"
+date: "29/03/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1
+The Australian Weather dataset was downloaded from [Kaggle](https://www.kaggle.com/jsphyg/weather-dataset-rattle-package/download) and includes information on a range of Meteoroligical measurements between 2007 and 2017 across Australian weather stations
+
+
+```{r}
+library(dplyr)
+
+weather <- read.csv('weatherAUS.csv')
+vars <- c('Date','Location', 'MinTemp', 'MaxTemp', 'Rainfall') #Step 1
+df <- weather %>% select(vars)
+head(df)
+str(df)
+weather$Date <- as.Date(weather$Date)
+df_sub <- head(df,10)
+df_sub <- as.matrix(df_sub)
+str(df_sub)
+df_sub1 <- df[c(1,ncol(df))]
+saveRDS(df_sub1, file = 'df_sub1.RData')
+
+days <- c('Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Thursday', 'Friday', 'Friday', 'Saturday', 'Sunday')
+values <- c(1,4,2,2,2,5,1,4,3,2)
+df2 <- data.frame( col1 = days,
+                   col2 = values)
+str(df2)
+df2$col1 <- ordered(df2$col1, levels = c('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'))
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

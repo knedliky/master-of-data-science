@@ -1,0 +1,216 @@
+---
+title: "AirBnB Prices in Sydney"
+author: "Simon Karumbi - s3455453"
+date: '27 October 2019'
+output:
+  beamer_presentation:
+    highlight: haddock
+  slidy_presentation:
+    colortheme: Beaver
+    df_print: paged
+    font_adjustment: 0
+    highlight: haddock
+    mathjax: default
+    theme: spacelab
+subtitle: Searching for the best bang for your buck
+---
+
+```{r setup, include=FALSE}
+# Use this chunk to quietly load your pacakges
+
+knitr::opts_chunk$set(
+	fig.align = "center",
+	message = FALSE,
+	warning = FALSE
+)
+# Packages loaded in this chunk will not appear in the presentation. 
+
+library(knitr) # Used for formatting tables to HTML
+library(ggplot2) # Used for creating plots
+library(readr) # Used for loading in files
+library(dplyr) # Used for piping commands
+library(psychometric) # Used for bivariate data analysis
+
+```
+
+
+# RPubs link information
+
+http://rpubs.com/simonkarumbi/airbnb
+
+# Introduction
+
+I was recently booking a trip to Sydney for several people, and wanted to stay in a relatively nice place, close to the beach. According to AirBnb's latest data accessed at http://insideairbnb.com/sydney/, there are over AirBnb 36,000 listings to choose from, ranging in prices and ratings. I wanted to discover if there was any correlation between the price I chose to pay for an AirBnB and the experience I received, so that I could make a better decision when booking.
+
+# Problem Statement
+
+- Is there a correlation between the average cost per guest, and the experience of AirBnb guests in Sydney's most popular beach suburbs?
+- Simple Linear Regression will be used to determine if there is any significant correlation between the two variables being investigated, where we will be testing statistical significance using the Pearon Correlation Coefficient to test the strength of the bivariate relationship. 
+
+# Data
+
+- Data set: http://data.insideairbnb.com/australia/nsw/sydney/2019-09-14/data/listings.csv.gz 
+ 
+- This open source data was collected by Murray Cox, and data is scraped by them from publicly available data from the AirBnb website where it is the verified, cleaned and aggregated. The data set is not affiliated by AirBnb in any way.
+- The most recent data set available for Sydney was updated on 14 September 2019 and included a total of 36,662 listings.
+
+
+# Data Cont.
+
+- The important variables explored in this investigation were rating, and a variable to measure the average price per guest
+- Data was filtered by "neighbourhood_cleansed" to only including the city of Waverley, which includes Suburbs such as Bondi and Coogee
+- Data was filtered by "number_of_reviews" to get a more accurate representation of the ratings
+- I am only interested in full homes, therefore filtering the "room_type"
+- Rating was sourced from the "review_scores_rating" column
+- The "price" column needed to be parsed as a float in order to perform calculations
+- Price per Guest was calculated by "price"/ "guests_included"
+- Both variables being measured are continuous
+
+```{r}
+# Reading in the data set
+listings <- read_csv('listings.csv')
+
+# Selecting variables from the original dataset for the specific information that we are investigating
+waverley <- dplyr::select(listings, id,room_type,guests_included,neighbourhood_cleansed,number_of_reviews,review_scores_rating,price) 
+
+# Filtering the variables further, to get the location of AirBnBs, type of accommodation that is desired and homes with more than 15 reviews
+waverley <- waverley %>% dplyr::filter(neighbourhood_cleansed == "Waverley" & room_type == "Entire home/apt" & number_of_reviews > 15)
+
+# Parsing the prices in, as numeric instead of character - thereby removing the "$"
+waverley$price <- parse_number(waverley$price)
+
+# Creating a column for observation to get a standardised variable, price per guest
+waverley <- mutate(waverley, price_per_guest = price/guests_included)
+
+# Checking na values that might need to be removed, there are none so no need to remove them in the upcoming Summary tables
+colSums(is.na(waverley))
+
+```
+
+# Descriptive Statistics and Visualisation
+
+Firstly, we explore the data through summary statistics. 
+
+```{r}
+# Rating summary table
+table_rating <- waverley %>% summarise(Min = min(review_scores_rating),
+                       Q1 = quantile(review_scores_rating, probs = 0.25), 
+                       Mean = mean(review_scores_rating), 
+                       Q3 = quantile(review_scores_rating, probs = 0.75), 
+                       Max = max(review_scores_rating), 
+                       Median = median(review_scores_rating), 
+                       SD = sd(review_scores_rating), 
+                       Mean = mean(review_scores_rating), 
+                       n = n(), 
+                       Missing = sum(is.na(review_scores_rating)))
+kable(table_rating)
+
+# Summary table of price per guest
+table_price <- waverley %>% summarise(Min = min(price_per_guest),
+                                      Q1 = quantile(price_per_guest, probs = 0.25), 
+                                      Mean = mean(price_per_guest), 
+                                      Q3 = quantile(price_per_guest, probs = 0.75), 
+                                      Max = max(price_per_guest), 
+                                      Median = median(price_per_guest), 
+                                      SD = sd(price_per_guest), 
+                                      Mean = mean(price_per_guest), 
+                                      n = n(), 
+                                      Missing = sum(is.na(price_per_guest)))
+kable(table_price)
+
+# Grouped by guests included for a deeper look
+table_grouped_guests <- waverley %>% group_by(guests_included) %>%  summarise(Min = min(price_per_guest),
+                                                      Q1 = quantile(price_per_guest, probs = 0.25), 
+                                                      Mean = mean(price_per_guest), 
+                                                      Q3 = quantile(price_per_guest, probs = 0.75), 
+                                                      Max = max(price_per_guest), 
+                                                      Median = median(price_per_guest), 
+                                                      SD = sd(price_per_guest), 
+                                                      Mean = mean(price_per_guest), 
+                                                      n = n(), 
+                                                      Missing = sum(is.na(price_per_guest)))
+kable(table_grouped_guests)
+```
+
+# Decsriptive Statistics Cont.
+
+- There appear to be some outliers that may affect the results of the study. Let's investigate and see if anything needs to be done.
+
+```{r}
+# Some discovery on what our outliers are, and whether we should remove them from the exploration
+rating_outliers <- boxplot(waverley$review_scores_rating)$out
+kable(waverley[which(waverley$review_scores_rating %in% rating_outliers),])
+
+# These seem reasonable and what we might be looking at, so no need ot remove these outliers. This is confirmed by looking at the variance
+var(rating_outliers)
+
+# Pricing on the other hand, grows exponentially in the upper brackets and will skew the data in a positive direction
+price_outliers <- boxplot(waverley$price_per_guest)$out
+kable(waverley[which(waverley$price_per_guest %in% price_outliers),])
+# Confirmed again by looking at the outlier variance
+var(price_outliers)
+
+# Removing outliers from the price dataset
+waverley <- waverley[-which(waverley$price_per_guest %in% price_outliers),]
+
+```
+# Descriptive Statistics Cont.
+
+- Now to visualise the data and seem if any observations can be made to formulate a Hypothesis. A two-dimnensional density graph is used where we can see that Rating is heavily positively (toward the direction of high rating) and Price is more normally distributed, with a slight negative skew (toward cheaper prices). 
+- This was also confirmed in the box plot distributions previously, when looking for outliers
+
+```{R}
+# Loading Ggplot for visualisation 
+# Initial scatter plot with a 2D density plot suggests there there could be a positive correlation between the two variables, with a concentration in top left quadrant of the graph.
+gg <- ggplot(data = waverley, aes(price_per_guest, review_scores_rating))
+gg + geom_density_2d() + 
+  geom_jitter(aes(color = guests_included)) + 
+  labs(title = "AirBnb Prices vs. Ratings",  x = "Price per Guest", y = "Average Rating", colour = "Guests") + 
+  scale_color_gradient(low = "purple", high = "red")
+```
+
+# Hypothesis Testing
+
+- We can create a simple regressional model and observe some test statistics
+- We can support that we are looking at a linear relation, as 'Residuals vs Fitted' is a flat line
+- The Q-Q plot suggests that there are no gross deviations from normal, therefore we can assume the distributions are relatively normal
+- We can assume homoescadicity due to the flat variance between scale-location and the square of standardised residuals 
+Apply an appropriate hypothesis test for your investigation. 
+- We can also see that we safely removed outliers that may have affected the data based on Cook's distances
+
+```{r}
+model1 <- lm(review_scores_rating ~ price_per_guest, data = waverley)
+plot(model1)
+model1 %>% summary()
+```
+
+# Hypthesis Testing Cont.
+
+- Our Null Hypothesis is that there is no correlation between AirBnb rating and price (per guest)
+- Our Alternate Hypothesis is that there is correlation between AirBnb rating and price (per guest)
+- We will be measuring this through the Pearson Correlation Coefficient and a significance level of 0.05
+$$\alpha = 0.05$$
+
+$$H_0: r = 0 $$
+
+$$H_A: r \ne 0$$
+
+$$r=\frac{Lxy}{\sqrt{LxxLyy}}$$
+```{r}
+# Using the psychometric package to measure a 95% Confidence Interval to test the Hypothesis
+r = cor(waverley$review_scores_rating, waverley$price_per_guest)
+CIr(r = r, n = sum(count(waverley)), level = .95)
+# The Confidence Interval does not capture the Null Hypothesis, therefore the null Hypothesis is rejected. There was a statistically significant
+```
+
+# Discussion
+
+- We can safely reject the Null Hypothesis and accept the alterante hypothesis as indicated by not capturing the result of the Null Hypothesis in our test statistic - the Confidence Interval calculation of the Pearson Coefficient r = 0.02443, with a p value below the significance value of p= 0.0002694, CI[0.0728208 0.2376340].
+- Interestingly, there seems to be points in the data where value for money decreases as indicated by the 2D density plot and the QQ plot. This suggests that there lies an area where I would be getting the best experience for the money I pay for an AirBnb in this area. Further investigation could be made to create a predictive model that could exploit this information for people wishing to list their AirBnB listing at a competitve price. 
+- The data was collected and analysed was for one city of Sydney, the suburb of Waverley. This means that the findings cannot be used as a model for other populations i.e. other Australian Cities, potentiallynot even other Sydney suburbs. Additionally, there could be evidence that suggest there are other factors like closeness to the beach or other tourist destinations like the Sydney Opera house that correlate more strongly to pricing.
+- Further investigation should be made, taking samples from different cities and suburbs with different varibales that may correlate more strongly with the pricing.
+
+
+# References
+
+Data set: http://data.insideairbnb.com/australia/nsw/sydney/2019-09-14/data/listings.csv.gz 
