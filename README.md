@@ -1,4 +1,4 @@
-# RMIT Master of Data Science
+# Master of Data Science coursework
 
 ## Semester 1
 
